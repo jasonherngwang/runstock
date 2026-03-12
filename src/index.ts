@@ -68,6 +68,75 @@ async function handleFetch(req: Request, env: Env, ctx: ExecutionContext): Promi
     return withCors(res, req);
   }
 
+  if (url.pathname === "/api/v1/history/series/aggregate" && req.method === "GET") {
+    const db = env.DB;
+    if (!db) {
+      return withCors(Response.json({ error: "Database not available" }, { status: 503 }), req);
+    }
+    const urlObj = new URL(req.url);
+    const gpuType = urlObj.searchParams.get("gpu_type") ?? "";
+    const serviceTier = urlObj.searchParams.get("service_tier") ?? "";
+    const rawHours = parseFloat(urlObj.searchParams.get("hours") ?? "48") || 48;
+    const hours = Math.max(1, Math.min(rawHours, 168));
+    if (!gpuType || !serviceTier) {
+      return withCors(
+        Response.json({ error: "gpu_type and service_tier are required" }, { status: 400 }),
+        req,
+      );
+    }
+    try {
+      const { results } = await db.prepare(
+        `SELECT timestamp, region, price, spot_price, status
+         FROM gpu_price_samples
+         WHERE gpu_type = ? AND service_tier = ?
+           AND timestamp >= datetime('now', ?)
+         ORDER BY timestamp ASC`,
+      )
+        .bind(gpuType, serviceTier, `-${hours} hours`)
+        .all();
+      const rows = (results ?? []) as {
+        timestamp: string;
+        region: string;
+        price: number;
+        spot_price: number | null;
+        status: string;
+      }[];
+      const byTime = new Map<string, { price: number; spot_price: number | null; status: string }[]>();
+      for (const r of rows) {
+        const t = r.timestamp;
+        if (!byTime.has(t)) byTime.set(t, []);
+        byTime.get(t)!.push({
+          price: r.price,
+          spot_price: r.spot_price,
+          status: r.status ?? "",
+        });
+      }
+      const data = Array.from(byTime.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([timestamp, entries]) => {
+          const available = entries.find(
+            (e) =>
+              e.price > 0 &&
+              (e.status?.toLowerCase().trim() !== "unavailable"),
+          );
+          const best = available ?? entries[0];
+          return {
+            timestamp,
+            price: best?.price ?? 0,
+            spot_price: best?.spot_price ?? null,
+            status: best?.status ?? "unavailable",
+          };
+        });
+      return withCors(
+        Response.json({ data }, { headers: { "Cache-Control": "public, max-age=30" } }),
+        req,
+      );
+    } catch (err) {
+      console.error("History series aggregate error:", err);
+      return withCors(Response.json({ error: GENERIC_ERROR }, { status: 500 }), req);
+    }
+  }
+
   if (url.pathname === "/api/v1/history/series" && req.method === "GET") {
     const db = env.DB;
     if (!db) {
