@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS gpu_events;
+DROP TABLE IF EXISTS gpu_state;
