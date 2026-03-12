@@ -1,0 +1,58 @@
+{
+  "name": "runstock",
+  "main": "src/index.ts",
+  "dev": {
+    "port": 8787
+  },
+  "compatibility_date": "2026-03-09",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "runstock-db",
+      "database_id": "cf0b787b-c468-4277-869c-5c5d7cfe116d"
+    }
+  ],
+
+  "kv_namespaces": [
+    {
+      "binding": "GPU_STOCK",
+      "id": "756e69350f6a4d519bd66bb66bc01bcf",
+      "preview_id": "36f569909cef427a96bb0c4cb7be4902"
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CONNECTION_MANAGER",
+        "class_name": "ConnectionManager"
+      }
+    ]
+  },
+
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["ConnectionManager"]
+    }
+  ],
+
+  "workflows": [
+    {
+      "name": "ingestion",
+      "binding": "INGESTION_WORKFLOW",
+      "class_name": "IngestionWorkflow"
+    }
+  ],
+
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+
+  "observability": {
+    "enabled": true,
+    "logs": { "head_sampling_rate": 1 }
+  }
+}

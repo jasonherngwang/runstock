@@ -1,0 +1,22 @@
+{
+  "packageManager": "pnpm@9.15.0",
+  "name": "runstock",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply runstock-db",
+    "db:migrate:local": "wrangler d1 migrations apply runstock-db --local",
+    "db:reset:local": "rm -rf .wrangler/state && pnpm db:migrate:local",
+    "types": "wrangler types"
+  },
+  "dependencies": {
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.7.0",
+    "wrangler": "^4.71.0"
+  }
+}
