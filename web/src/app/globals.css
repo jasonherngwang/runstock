@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+:root {
+  --bg-deep: #060708;
+  --bg-surface: #0c0e12;
+  --bg-elevated: #12161d;
+  --bg-hover: #181d26;
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --text-primary: #e8ecf1;
+  --text-secondary: #8b96a4;
+  --text-muted: #5c6572;
+  --accent: #00d4aa;
+  --accent-dim: rgba(0, 212, 170, 0.5);
+  --spot-price: #f59e0b;
+  --spot-price-muted: #7c8a9a;
+  --accent-glow: rgba(0, 212, 170, 0.15);
+  --available: #22c55e;
+  --available-dim: rgba(34, 197, 94, 0.4);
+  --availability-high: #22c55e;
+  --availability-medium: #f59e0b;
+  --availability-low: #ef4444;
+  --low: #f59e0b;
+  --unavailable: #6b7280;
+  --error: #ef4444;
+  --font-display: var(--font-bricolage);
+  --font-mono: var(--font-ibm-mono);
+}
+
+@theme inline {
+  --color-background: var(--bg-deep);
+  --color-foreground: var(--text-primary);
+  --font-sans: var(--font-bricolage);
+  --font-mono: var(--font-ibm-mono);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-card-in {
+  animation: card-in 0.4s ease-out forwards;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+}
