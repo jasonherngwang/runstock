@@ -17,7 +17,7 @@ const ibmMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: "RunStock",
-  description: "RunPod GPU availability and price history",
+  description: "Runpod GPU availability and price history",
 };
 
 export default function RootLayout({

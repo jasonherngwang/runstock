@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GpuSlot } from "@/lib/api";
 import {
   chartTierKey,
@@ -44,9 +44,11 @@ const DEFAULT_GPU_MATCHERS: ((s: GpuSlot) => boolean)[] = [
 export function GpuDetailChart() {
   const { chartSlots, addChartSlot, removeChartSlot, clearChartSlots } = useChartSelection();
   const { slots, loading: stockLoading, updatedAt } = useStock();
+  const hasAutoPopulatedRef = useRef(false);
+  const hasShownChartRef = useRef(false);
 
   useEffect(() => {
-    if (stockLoading || chartSlots.length > 0 || slots.length === 0) return;
+    if (hasAutoPopulatedRef.current || stockLoading || chartSlots.length > 0 || slots.length === 0) return;
     const toAdd: GpuSlot[] = [];
     const seen = new Set<string>();
     for (const matcher of DEFAULT_GPU_MATCHERS) {
@@ -62,6 +64,7 @@ export function GpuDetailChart() {
       }
     }
     for (const slot of toAdd) addChartSlot(slot);
+    hasAutoPopulatedRef.current = true;
   }, [stockLoading, chartSlots.length, slots, addChartSlot]);
   const [seriesData, setSeriesData] = useState<Map<string, PriceSample[]>>(new Map());
   const [loading, setLoading] = useState(false);
@@ -71,10 +74,11 @@ export function GpuDetailChart() {
   const fetchAll = useCallback(async () => {
     if (chartSlots.length === 0) {
       setSeriesData(new Map());
+      setLoading(false);
       return;
     }
-    setLoading(true);
     setError(null);
+    if (!hasShownChartRef.current) setLoading(true);
     try {
       const results = await Promise.all(
         chartSlots.map((s) =>
@@ -87,6 +91,7 @@ export function GpuDetailChart() {
       );
       const map = new Map(results.map((r) => [r.key, r.data]));
       setSeriesData(map);
+      hasShownChartRef.current = true;
     } catch (err) {
       setError(String(err));
       setSeriesData(new Map());
@@ -169,7 +174,7 @@ export function GpuDetailChart() {
         </div>
       )}
 
-      {loading && (
+      {loading && chartSlots.length > 0 && !hasData && (
         <div className="flex h-[360px] items-center justify-center">
           <div className="flex flex-col items-center gap-3">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
@@ -201,8 +206,8 @@ export function GpuDetailChart() {
         </div>
       )}
 
-      {!loading && !error && hasData && (
-        <div>
+      {!error && hasData && (
+        <div className="min-h-[360px]">
           <GpuPriceChart series={chartSeries} height={360} />
           <p className="mt-1.5 text-xs text-[var(--text-muted)]">
             Sampled every ~5 min (all regions). Red line = gap in data (unavailable or missed sample).

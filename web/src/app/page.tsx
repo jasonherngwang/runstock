@@ -21,7 +21,7 @@ export default function Home() {
                     RunStock
                   </h1>
                   <p className="mt-0.5 text-sm text-[var(--text-muted)]">
-                    RunPod GPU availability & price history
+                    Runpod GPU availability & price history
                   </p>
                 </div>
                 <a
