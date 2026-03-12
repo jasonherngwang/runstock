@@ -5,11 +5,10 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 import type { GpuSlot, StockResponse } from "@/lib/api";
-import { fetchStock, getWebSocketUrl } from "@/lib/api";
+import { fetchStock, getWebSocketUrl, slotKey } from "@/lib/api";
 
 type StockState = {
   slots: GpuSlot[];
@@ -76,14 +75,9 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
         };
         if (msg.type === "STOCK_CHANGE" && msg.payload?.transitions) {
           setState((s) => {
-            const updated = new Map(
-              s.slots.map((x) => [
-                `${x.gpu_type}|${x.region}|${x.service_tier}`,
-                x,
-              ]),
-            );
+            const updated = new Map(s.slots.map((x) => [slotKey(x), x]));
             for (const t of msg.payload!.transitions!) {
-              updated.set(`${t.gpu_type}|${t.region}|${t.service_tier}`, t);
+              updated.set(slotKey(t), t);
             }
             return {
               ...s,
@@ -99,9 +93,8 @@ export function StockProvider({ children }: { children: React.ReactNode }) {
     return () => ws.close();
   }, []);
 
-  const value = useMemo(() => state, [state]);
   return (
-    <StockContext.Provider value={value}>{children}</StockContext.Provider>
+    <StockContext.Provider value={state}>{children}</StockContext.Provider>
   );
 }
 

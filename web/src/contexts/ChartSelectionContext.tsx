@@ -1,13 +1,11 @@
 "use client";
 
-import { createContext, useCallback, useContext, useState } from "react";
-import { flushSync } from "react-dom";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { GpuSlot } from "@/lib/api";
+import { chartTierKey, slotKey } from "@/lib/api";
 import { MAX_CHART_SLOTS } from "@/components/GpuPriceChart";
 
-export function slotKey(s: GpuSlot): string {
-  return `${s.gpu_type}|${s.region}|${s.service_tier}`;
-}
+export { chartTierKey, slotKey };
 
 type ChartSelectionContextValue = {
   chartSlots: GpuSlot[];
@@ -27,27 +25,25 @@ export function ChartSelectionProvider({ children }: { children: React.ReactNode
 
   const addChartSlot = useCallback((slot: GpuSlot) => {
     setChartSlots((prev) => {
-      const k = slotKey(slot);
-      if (prev.some((s) => slotKey(s) === k)) return prev;
+      const k = chartTierKey(slot);
+      if (prev.some((s) => chartTierKey(s) === k)) return prev;
       if (prev.length >= MAX_CHART_SLOTS) return prev;
       return [...prev, slot];
     });
   }, []);
 
   const removeChartSlot = useCallback((slot: GpuSlot) => {
-    const k = slotKey(slot);
-    setChartSlots((prev) => prev.filter((s) => slotKey(s) !== k));
+    const k = chartTierKey(slot);
+    setChartSlots((prev) => prev.filter((s) => chartTierKey(s) !== k));
   }, []);
 
   const toggleChartSlot = useCallback((slot: GpuSlot) => {
-    const k = slotKey(slot);
-    flushSync(() => {
-      setChartSlots((prev) => {
-        const idx = prev.findIndex((s) => slotKey(s) === k);
-        if (idx >= 0) return prev.filter((_, i) => i !== idx);
-        if (prev.length >= MAX_CHART_SLOTS) return prev;
-        return [...prev, slot];
-      });
+    const k = chartTierKey(slot);
+    setChartSlots((prev) => {
+      const idx = prev.findIndex((s) => chartTierKey(s) === k);
+      if (idx >= 0) return prev.filter((_, i) => i !== idx);
+      if (prev.length >= MAX_CHART_SLOTS) return prev;
+      return [...prev, slot];
     });
   }, []);
 
@@ -59,16 +55,27 @@ export function ChartSelectionProvider({ children }: { children: React.ReactNode
     if (slot) addChartSlot(slot);
   }, [addChartSlot]);
 
-  const value = {
-    chartSlots,
-    addChartSlot,
-    removeChartSlot,
-    toggleChartSlot,
-    clearChartSlots,
-    selectedSlot: chartSlots[0] ?? null,
-    setSelectedSlot,
-    canAddToChart,
-  };
+  const value = useMemo(
+    () => ({
+      chartSlots,
+      addChartSlot,
+      removeChartSlot,
+      toggleChartSlot,
+      clearChartSlots,
+      selectedSlot: chartSlots[0] ?? null,
+      setSelectedSlot,
+      canAddToChart,
+    }),
+    [
+      chartSlots,
+      addChartSlot,
+      removeChartSlot,
+      toggleChartSlot,
+      clearChartSlots,
+      setSelectedSlot,
+      canAddToChart,
+    ],
+  );
   return (
     <ChartSelectionContext.Provider value={value}>
       {children}

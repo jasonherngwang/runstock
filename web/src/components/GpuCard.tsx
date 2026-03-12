@@ -1,13 +1,10 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import type { GpuSlot } from "@/lib/api";
+import { chartTierKey } from "@/lib/api";
 import { useChartSelection } from "@/contexts/ChartSelectionContext";
 import { displayGpuName } from "@/lib/gpu-family";
-
-function slotKey(s: GpuSlot) {
-  return `${s.gpu_type}|${s.region}|${s.service_tier}`;
-}
 
 function getAvailabilityDisplay(stockStatus: string | null | undefined): {
   label: string;
@@ -22,10 +19,36 @@ function getAvailabilityDisplay(stockStatus: string | null | undefined): {
   return { label: stockStatus.trim(), color: "var(--text-muted)", bg: "rgba(255,255,255,0.08)" };
 }
 
-export function GpuCard({ slot }: { slot: GpuSlot }) {
+export function GpuCard({
+  slot,
+  sameTierSlots,
+}: {
+  slot: GpuSlot;
+  sameTierSlots: GpuSlot[];
+}) {
   const { chartSlots, toggleChartSlot, canAddToChart } = useChartSelection();
-  const isSelected = chartSlots.some((s) => slotKey(s) === slotKey(slot));
+  const isSelected = chartSlots.some((s) => chartTierKey(s) === chartTierKey(slot));
   const canToggle = isSelected || canAddToChart;
+
+  const { isAvailable, availability, hoverTitle } = useMemo(() => {
+    const available = sameTierSlots.filter(
+      (s) => s.status === "available" && s.current_price > 0,
+    );
+    const anyAvailable = available.length > 0;
+    const regions = available.map((s) => s.region).sort();
+    const bestSlot = anyAvailable ? available[0] : sameTierSlots[0];
+    const availDisplay = anyAvailable
+      ? getAvailabilityDisplay(bestSlot.stock_status)
+      : null;
+    const title = anyAvailable
+      ? `Available in: ${regions.join(", ")}`
+      : "Not available";
+    return {
+      isAvailable: anyAvailable,
+      availability: availDisplay,
+      hoverTitle: title,
+    };
+  }, [sameTierSlots]);
 
   const handleActivate = useCallback(
     (e: React.MouseEvent | React.KeyboardEvent) => {
@@ -38,10 +61,13 @@ export function GpuCard({ slot }: { slot: GpuSlot }) {
     [slot, toggleChartSlot, canToggle],
   );
 
-  const isAvailable = slot.status === "available" && slot.current_price > 0;
   const statusColor = isAvailable ? "var(--available)" : "var(--unavailable)";
 
-  const availability = isAvailable ? getAvailabilityDisplay(slot.stock_status) : null;
+  const displaySlot = isAvailable
+    ? sameTierSlots.find((s) => s.status === "available" && s.current_price > 0) ?? slot
+    : slot;
+  const priceStr = displaySlot.current_price > 0 ? `$${displaySlot.current_price.toFixed(2)}` : "—";
+  const hasSpot = displaySlot.spot_price != null && displaySlot.spot_price > 0;
 
   const specParts: string[] = [];
   if (slot.memory_in_gb != null) specParts.push(`${slot.memory_in_gb}G VRAM`);
@@ -50,9 +76,6 @@ export function GpuCard({ slot }: { slot: GpuSlot }) {
   if (slot.min_vcpu != null) specParts.push(`${Math.round(slot.min_vcpu)} vCPU`);
   else if (slot.min_vcpu_floor != null) specParts.push(`${slot.min_vcpu_floor}+ vCPU`);
   const specStr = specParts.length > 0 ? specParts.join(" · ") : null;
-
-  const priceStr = slot.current_price > 0 ? `$${slot.current_price.toFixed(2)}` : "—";
-  const hasSpot = slot.spot_price != null && slot.spot_price > 0;
 
   return (
     <article
@@ -67,7 +90,11 @@ export function GpuCard({ slot }: { slot: GpuSlot }) {
             ? "cursor-pointer border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--accent)]/40 hover:bg-[var(--bg-elevated)]"
             : "cursor-not-allowed border-[var(--border-subtle)] bg-[var(--bg-surface)] opacity-60"
       }`}
-      title={!canToggle ? "Chart full (max 6 GPUs) — remove one to add more" : undefined}
+      title={
+        !canToggle
+          ? "Chart full (max 6 GPUs) — remove one to add more"
+          : hoverTitle
+      }
     >
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-1.5">
@@ -80,14 +107,14 @@ export function GpuCard({ slot }: { slot: GpuSlot }) {
             <span className="font-mono text-[13px] font-medium text-[var(--text-primary)]">
               {displayGpuName(slot.gpu_type)}
             </span>
-            {availability && (
+            {availability ? (
               <span
                 className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium capitalize"
                 style={{ color: availability.color, backgroundColor: availability.bg }}
               >
                 {availability.label}
               </span>
-            )}
+            ) : null}
           </div>
           <div className="shrink-0 text-right text-[11px]">
             <span className="text-[var(--text-muted)]">OD </span>
@@ -102,7 +129,7 @@ export function GpuCard({ slot }: { slot: GpuSlot }) {
             <span className="shrink-0">
               <span className="text-[var(--text-muted)]">S </span>
               <span className="font-mono font-medium text-[var(--spot-price-muted)]">
-                ${slot.spot_price!.toFixed(2)}
+                ${displaySlot.spot_price!.toFixed(2)}
               </span>
             </span>
           ) : (

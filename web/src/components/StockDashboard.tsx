@@ -5,13 +5,10 @@ import { useStock } from "@/contexts/StockContext";
 import { GpuCard } from "./GpuCard";
 import { getGpuCategory, getProductDocUrl } from "@/lib/gpu-family";
 import type { GpuSlot } from "@/lib/api";
+import { chartTierKey, compareRegions } from "@/lib/api";
 
 type TierFilter = "secure" | "community";
 type PriceSort = "asc" | "desc";
-
-function normalizeRegion(s: string): string {
-  return s.trim().toLowerCase() || "global";
-}
 
 function slotCompare(a: GpuSlot, b: GpuSlot, priceSort: PriceSort): number {
   const aAvail = a.status === "available" ? 1 : 0;
@@ -26,7 +23,7 @@ function slotCompare(a: GpuSlot, b: GpuSlot, priceSort: PriceSort): number {
   const priceCmp = priceSort === "asc" ? diff : -diff;
   if (priceCmp !== 0) return priceCmp;
 
-  return a.region.localeCompare(b.region);
+  return compareRegions(a.region, b.region);
 }
 
 export function StockDashboard() {
@@ -53,7 +50,7 @@ export function StockDashboard() {
       (a, b) =>
         a.gpu_type.localeCompare(b.gpu_type) ||
         a.service_tier.localeCompare(b.service_tier) ||
-        normalizeRegion(a.region).localeCompare(normalizeRegion(b.region)),
+        compareRegions(a.region, b.region),
     );
     for (const s of sorted) {
       const key = `${s.gpu_type}|${s.service_tier}`;
@@ -62,6 +59,16 @@ export function StockDashboard() {
       result.push(s);
     }
     return result;
+  }, [filteredSlots]);
+
+  const slotsByTier = useMemo(() => {
+    const map = new Map<string, GpuSlot[]>();
+    for (const s of filteredSlots) {
+      const k = chartTierKey(s);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(s);
+    }
+    return map;
   }, [filteredSlots]);
 
   const groupedByCategory = useMemo(() => {
@@ -208,6 +215,7 @@ export function StockDashboard() {
                   <GpuCard
                     key={`${slot.gpu_type}-${slot.service_tier}`}
                     slot={slot}
+                    sameTierSlots={slotsByTier.get(chartTierKey(slot)) ?? [slot]}
                   />
                 ))}
               </div>

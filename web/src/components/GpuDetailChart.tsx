@@ -2,18 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { GpuSlot } from "@/lib/api";
-import { fetchSeries } from "@/lib/api";
+import {
+  chartTierKey,
+  fetchSeriesAggregate,
+  pickSlotByRegionPriority,
+  slotKey,
+} from "@/lib/api";
 import { GpuPriceChart, CHART_COLORS } from "./GpuPriceChart";
 import { useChartSelection } from "@/contexts/ChartSelectionContext";
 import { useStock } from "@/contexts/StockContext";
 import { displayGpuName } from "@/lib/gpu-family";
 import type { PriceSample } from "@/lib/api";
 
-function slotKey(s: GpuSlot) {
-  return `${s.gpu_type}|${s.service_tier}`;
-}
-
-function slotDisplayLabel(s: GpuSlot) {
+function tierDisplayLabel(s: GpuSlot) {
   return `${displayGpuName(s.gpu_type)} · ${s.service_tier}`;
 }
 
@@ -25,9 +26,43 @@ const RANGE_OPTIONS = [
   { hours: 168, label: "7d" },
 ] as const;
 
+const DEFAULT_TIER = "secure";
+
+const DEFAULT_GPU_MATCHERS: ((s: GpuSlot) => boolean)[] = [
+  (s) => s.service_tier === DEFAULT_TIER && /5090/i.test(s.gpu_type),
+  (s) =>
+    s.service_tier === DEFAULT_TIER &&
+    /pro/i.test(s.gpu_type) &&
+    /6000/i.test(s.gpu_type),
+  (s) => s.service_tier === DEFAULT_TIER && /4090/i.test(s.gpu_type),
+  (s) =>
+    s.service_tier === DEFAULT_TIER &&
+    /h100/i.test(s.gpu_type) &&
+    /nvl/i.test(s.gpu_type),
+];
+
 export function GpuDetailChart() {
-  const { chartSlots, removeChartSlot, clearChartSlots } = useChartSelection();
-  const { updatedAt } = useStock();
+  const { chartSlots, addChartSlot, removeChartSlot, clearChartSlots } = useChartSelection();
+  const { slots, loading: stockLoading, updatedAt } = useStock();
+
+  useEffect(() => {
+    if (stockLoading || chartSlots.length > 0 || slots.length === 0) return;
+    const toAdd: GpuSlot[] = [];
+    const seen = new Set<string>();
+    for (const matcher of DEFAULT_GPU_MATCHERS) {
+      const slot = pickSlotByRegionPriority(slots, (s) => {
+        if (!matcher(s)) return false;
+        const k = chartTierKey(s);
+        if (seen.has(k)) return false;
+        return true;
+      });
+      if (slot) {
+        toAdd.push(slot);
+        seen.add(chartTierKey(slot));
+      }
+    }
+    for (const slot of toAdd) addChartSlot(slot);
+  }, [stockLoading, chartSlots.length, slots, addChartSlot]);
   const [seriesData, setSeriesData] = useState<Map<string, PriceSample[]>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,12 +78,11 @@ export function GpuDetailChart() {
     try {
       const results = await Promise.all(
         chartSlots.map((s) =>
-          fetchSeries({
+          fetchSeriesAggregate({
             gpu_type: s.gpu_type,
-            region: s.region,
             service_tier: s.service_tier,
             hours,
-          }).then((res) => ({ key: slotKey(s), data: res.data })),
+          }).then((res) => ({ key: chartTierKey(s), data: res.data })),
         ),
       );
       const map = new Map(results.map((r) => [r.key, r.data]));
@@ -67,13 +101,16 @@ export function GpuDetailChart() {
 
   const chartSeries = useMemo(() => {
     return chartSlots.map((s, i) => ({
-      label: slotDisplayLabel(s),
-      data: seriesData.get(slotKey(s)) ?? [],
+      label: tierDisplayLabel(s),
+      data: seriesData.get(chartTierKey(s)) ?? [],
       color: CHART_COLORS[i % CHART_COLORS.length],
     }));
   }, [chartSlots, seriesData]);
 
-  const hasData = chartSeries.some((s) => s.data.filter((d) => d.price > 0).length >= 2);
+  const hasData = useMemo(
+    () => chartSeries.some((s) => s.data.filter((d) => d.price > 0).length >= 2),
+    [chartSeries],
+  );
 
   return (
     <section className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
@@ -100,24 +137,23 @@ export function GpuDetailChart() {
       </div>
       {chartSlots.length > 0 && (
         <div className="mb-2 flex flex-wrap items-center gap-1.5">
-          {chartSlots.map((s) => (
+          {chartSlots.map((s, i) => (
             <span
-              key={slotKey(s)}
+              key={chartTierKey(s)}
               className="inline-flex items-center gap-1 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-xs"
             >
               <span
                 className="h-1 w-1 shrink-0 rounded-full"
                 style={{
-                  backgroundColor:
-                    CHART_COLORS[chartSlots.indexOf(s) % CHART_COLORS.length],
+                  backgroundColor: CHART_COLORS[i % CHART_COLORS.length],
                 }}
               />
-              {slotDisplayLabel(s)}
+              {tierDisplayLabel(s)}
               <button
                 type="button"
                 onClick={() => removeChartSlot(s)}
                 className="ml-0.5 cursor-pointer text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                aria-label={`Remove ${slotDisplayLabel(s)}`}
+                aria-label={`Remove ${tierDisplayLabel(s)}`}
               >
                 ×
               </button>
@@ -169,7 +205,8 @@ export function GpuDetailChart() {
         <div>
           <GpuPriceChart series={chartSeries} height={360} />
           <p className="mt-1.5 text-xs text-[var(--text-muted)]">
-            Sampled every ~5 min. Red line = gap in data (unavailable or missed sample). Add GPUs to compare (max 6).
+            Sampled every ~5 min (all regions). Red line = gap in data (unavailable or missed sample).
+            Add GPUs to compare (max 6).
           </p>
         </div>
       )}
