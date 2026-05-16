@@ -114,11 +114,13 @@ async function handleFetch(req: Request, env: Env, ctx: ExecutionContext): Promi
       const data = Array.from(byTime.entries())
         .sort((a, b) => a[0].localeCompare(b[0]))
         .map(([timestamp, entries]) => {
-          const available = entries.find(
-            (e) =>
-              e.price > 0 &&
-              (e.status?.toLowerCase().trim() !== "unavailable"),
-          );
+          const available = entries
+            .filter(
+              (e) =>
+                e.price > 0 &&
+                (e.status?.toLowerCase().trim() !== "unavailable"),
+            )
+            .sort((a, b) => a.price - b.price)[0];
           const best = available ?? entries[0];
           return {
             timestamp,

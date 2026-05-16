@@ -64,7 +64,7 @@ export type GpuSlot = {
   min_memory_gb?: number | null;
   min_vcpu_floor?: number;
   min_memory_gb_floor?: number | null;
-  lowest_price_country_code?: string;
+  lowest_price_country_code?: string | null;
   us_cheapest_price?: number | null;
   us_cheapest_spot?: number | null;
   min_disk?: number | null;

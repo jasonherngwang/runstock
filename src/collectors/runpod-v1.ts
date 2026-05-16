@@ -160,7 +160,6 @@ type RunPodGpuType = {
 };
 
 const VCPU_FLOOR_PER_GPU = 4;
-const LOWEST_PRICE_COUNTRY = "US";
 
 export type GpuSlot = {
   gpu_type: string;
@@ -190,7 +189,7 @@ export type GpuSlot = {
   min_memory_gb: number | null;
   min_vcpu_floor: number;
   min_memory_gb_floor: number | null;
-  lowest_price_country_code: string;
+  lowest_price_country_code: string | null;
   us_cheapest_price: number | null;
   us_cheapest_spot: number | null;
   min_disk: number | null;
@@ -203,10 +202,6 @@ export type GpuSlot = {
   datacenter_compliance: string[] | null;
   gpu_availability: Record<string, unknown>[] | null;
 };
-
-function normalizeRegion(s: string): string {
-  return s.trim().toLowerCase() || "global";
-}
 
 function normalizeGpuName(gpu: RunPodGpuType): string {
   const d = gpu.displayName?.trim();
@@ -232,51 +227,61 @@ function getGpuAvailabilityEntry(
   );
 }
 
-function getAvailabilityForGpu(
-  dc: RunPodDataCenter | null,
-  gpuId: string,
-  gpuName: string,
-): boolean {
-  const entry = getGpuAvailabilityEntry(dc, gpuId, gpuName);
-  if (!entry) return true;
-  return entry.available ?? false;
+function isAvailableByLowestPrice(lp: RunPodLowestPrice | null | undefined): boolean {
+  if (!lp) return false;
+  const hasStock = lp.maxUnreservedGpuCount !== 0;
+  const hasPrice = lp.uninterruptablePrice != null || lp.minimumBidPrice != null;
+  return hasStock && hasPrice;
 }
 
-function isUnavailableByLowestPrice(lp: RunPodLowestPrice | null | undefined): boolean {
-  if (!lp) return false;
-  const noStock = lp.maxUnreservedGpuCount === 0;
-  const noPrice =
-    lp.uninterruptablePrice == null && lp.minimumBidPrice == null;
-  return noStock || noPrice;
+function getGpuAvailabilityEntries(
+  dcs: RunPodDataCenter[],
+  gpuId: string,
+  gpuName: string,
+): Record<string, unknown>[] | null {
+  const entries: Record<string, unknown>[] = [];
+  for (const dc of dcs) {
+    const entry = getGpuAvailabilityEntry(dc, gpuId, gpuName);
+    if (!entry) continue;
+    entries.push({
+      datacenterId: dc.id,
+      datacenterName: dc.name,
+      datacenterLocation: dc.location,
+      datacenterListed: dc.listed,
+      datacenterGlobalNetwork: dc.globalNetwork,
+      datacenterStorageSupport: dc.storageSupport,
+      datacenterCompliance: dc.compliance,
+      ...entry,
+    });
+  }
+  return entries.length > 0 ? entries : null;
 }
 
 function slotFromGpu(
   gpu: RunPodGpuType,
   gpuName: string,
-  region: string,
-  dc: RunPodDataCenter | null,
   tier: "secure" | "community",
-  status: boolean,
-  price: number,
-  spotPrice: number | null,
   maxInstances: number | null,
 ): GpuSlot {
   const lp = tier === "secure" ? gpu.lowestPriceSecure : gpu.lowestPriceCommunity;
+  const available = isAvailableByLowestPrice(lp);
   const vramGbRaw = gpu.memoryInGb ?? (gpu as Record<string, unknown>).memory_in_gb ?? null;
   const vramGb = typeof vramGbRaw === "number" ? vramGbRaw : null;
   const availCounts = lp?.availableGpuCounts;
   const availableGpuCounts = Array.isArray(availCounts) ? availCounts : null;
-  const dcEntry = getGpuAvailabilityEntry(dc, gpu.id, gpuName);
-  const isUnavailable = !status;
+  const dcs = gpu.nodeGroupDatacenters ?? [];
+  const gpuAvailability = getGpuAvailabilityEntries(dcs, gpu.id, gpuName);
+  const listedPrice = tier === "secure" ? gpu.securePrice : gpu.communityPrice;
+  const listedSpotPrice = tier === "secure" ? gpu.secureSpotPrice : gpu.communitySpotPrice;
   return {
     gpu_type: gpuName,
     gpu_id: gpu.id,
-    region,
-    datacenter_id: dc?.id ?? null,
+    region: "global",
+    datacenter_id: null,
     service_tier: tier,
-    status: status ? "available" : "unavailable",
-    current_price: isUnavailable ? 0 : price,
-    spot_price: isUnavailable ? null : spotPrice,
+    status: available ? "available" : "unavailable",
+    current_price: available ? (lp?.uninterruptablePrice ?? listedPrice ?? 0) : 0,
+    spot_price: available ? (lp?.minimumBidPrice ?? listedSpotPrice ?? null) : null,
     cluster_price: gpu.clusterPrice ?? null,
     memory_in_gb: vramGb,
     manufacturer: gpu.manufacturer ?? null,
@@ -291,28 +296,23 @@ function slotFromGpu(
     six_month_price: gpu.sixMonthPrice ?? null,
     node_group_gpu_sizes: gpu.nodeGroupGpuSizes ?? null,
     lowest_price: lp ? (lp as unknown as Record<string, unknown>) : null,
-    stock_status:
-      (lp?.stockStatus as string | null) ??
-      (dcEntry?.stockStatus as string | null) ??
-      null,
+    stock_status: (lp?.stockStatus as string | null) ?? null,
     min_vcpu: lp?.minVcpu != null ? (lp.minVcpu as number) : null,
     min_memory_gb: lp?.minMemory != null ? (lp.minMemory as number) : null,
     min_vcpu_floor: VCPU_FLOOR_PER_GPU,
     min_memory_gb_floor: vramGb != null ? (vramGb as number) : null,
-    lowest_price_country_code: (lp?.countryCode as string | null) ?? LOWEST_PRICE_COUNTRY,
+    lowest_price_country_code: (lp?.countryCode as string | null) ?? null,
     us_cheapest_price: lp?.uninterruptablePrice != null ? (lp.uninterruptablePrice as number) : null,
     us_cheapest_spot: lp?.minimumBidPrice != null ? (lp.minimumBidPrice as number) : null,
     min_disk: lp?.minDisk != null ? (lp.minDisk as number) : null,
     min_download: lp?.minDownload != null ? (lp.minDownload as number) : null,
     min_upload: lp?.minUpload != null ? (lp.minUpload as number) : null,
     available_gpu_counts: availableGpuCounts,
-    datacenter_global_network: dc?.globalNetwork ?? null,
-    datacenter_storage_support: dc?.storageSupport ?? null,
-    datacenter_listed: dc?.listed ?? null,
-    datacenter_compliance: dc?.compliance ?? null,
-    gpu_availability: dc?.gpuAvailability
-      ? (dc.gpuAvailability as unknown as Record<string, unknown>[])
-      : null,
+    datacenter_global_network: null,
+    datacenter_storage_support: null,
+    datacenter_listed: null,
+    datacenter_compliance: null,
+    gpu_availability: gpuAvailability,
   };
 }
 
@@ -322,57 +322,14 @@ export function flattenGpuTypes(gpuTypes: RunPodGpuType[]): GpuSlot[] {
     const gpuName = normalizeGpuName(gpu);
     if (gpuName === "unidentified") continue;
 
-    const dcs = gpu.nodeGroupDatacenters ?? [];
-    const regionToDc = new Map<string, RunPodDataCenter>();
-    for (const dc of dcs) {
-      const raw = (dc.location || dc.name || dc.id || "").trim() || "global";
-      const region = normalizeRegion(raw);
-      if (!regionToDc.has(region)) regionToDc.set(region, dc);
-    }
-
-    const regions =
-      regionToDc.size > 0 ? Array.from(regionToDc.keys()) : ["global"];
-    const regionsToUse = regions.length > 0 ? regions : ["global"];
-
     const maxSecure = gpu.maxGpuCountSecureCloud ?? null;
     const maxCommunity = gpu.maxGpuCountCommunityCloud ?? null;
 
-    for (const region of regionsToUse) {
-      const dc = regionToDc.get(region) ?? null;
-      let available = getAvailabilityForGpu(dc, gpu.id, gpuName);
-      if (gpu.secureCloud === true) {
-        if (isUnavailableByLowestPrice(gpu.lowestPriceSecure)) available = false;
-        slots.push(
-          slotFromGpu(
-            gpu,
-            gpuName,
-            region,
-            dc,
-            "secure",
-            available,
-            gpu.securePrice ?? 0,
-            gpu.secureSpotPrice ?? null,
-            maxSecure,
-          ),
-        );
-      }
-      if (gpu.communityCloud === true) {
-        available = getAvailabilityForGpu(dc, gpu.id, gpuName);
-        if (isUnavailableByLowestPrice(gpu.lowestPriceCommunity)) available = false;
-        slots.push(
-          slotFromGpu(
-            gpu,
-            gpuName,
-            region,
-            dc,
-            "community",
-            available,
-            gpu.communityPrice ?? 0,
-            gpu.communitySpotPrice ?? null,
-            maxCommunity,
-          ),
-        );
-      }
+    if (gpu.secureCloud === true) {
+      slots.push(slotFromGpu(gpu, gpuName, "secure", maxSecure));
+    }
+    if (gpu.communityCloud === true) {
+      slots.push(slotFromGpu(gpu, gpuName, "community", maxCommunity));
     }
   }
   return slots;
