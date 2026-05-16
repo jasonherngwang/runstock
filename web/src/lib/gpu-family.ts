@@ -34,8 +34,8 @@ export function getGpuCategory(gpuType: string): GpuCategory {
     };
   }
 
-  if (n.includes("B200") || n.includes("B100")) {
-    const modelOrder = n.includes("B200") ? 0 : 1;
+  if (n.includes("B300") || n.includes("B200") || n.includes("B100")) {
+    const modelOrder = n.includes("B300") ? 0 : n.includes("B200") ? 1 : 2;
     return {
       section: "NVIDIA",
       productFamily: "B-series (Blackwell)",

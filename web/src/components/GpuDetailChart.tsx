@@ -210,7 +210,7 @@ export function GpuDetailChart() {
         <div className="min-h-[360px]">
           <GpuPriceChart series={chartSeries} height={360} />
           <p className="mt-1.5 text-xs text-[var(--text-muted)]">
-            Sampled every ~5 min (all regions). Red line = gap in data (unavailable or missed sample).
+            Sampled every ~5 min from RunPod lowestPrice. Red line = unavailable or missed sample.
             Add GPUs to compare (max 6).
           </p>
         </div>

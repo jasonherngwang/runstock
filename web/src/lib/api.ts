@@ -118,7 +118,7 @@ export async function fetchSeries(params: {
   return res.json();
 }
 
-/** Fetch price history aggregated across all regions (platform pulse). */
+/** Fetch lowestPrice-based general price history for a GPU tier. */
 export async function fetchSeriesAggregate(params: {
   gpu_type: string;
   service_tier: string;
